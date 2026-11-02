@@ -2,10 +2,13 @@
 
 #include "PlayerInteractionComponent.h"
 #include "Interactable.h"
+#include "InteractionPromptWidget.h"
 #include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
+#include "Engine/LocalPlayer.h"
 #include "GameFramework/Pawn.h"
-#include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "DrawDebugHelpers.h"
 
 UPlayerInteractionComponent::UPlayerInteractionComponent()
@@ -31,6 +34,18 @@ void UPlayerInteractionComponent::TickComponent(float DeltaTime, ELevelTick Tick
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 	UpdateFocus();
+}
+
+void UPlayerInteractionComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	// The pawn is going away (death, respawn, end of game): remove its prompt from the screen
+	if (PromptWidget)
+	{
+		PromptWidget->RemoveFromParent();
+		PromptWidget = nullptr;
+	}
+
+	Super::EndPlay(EndPlayReason);
 }
 
 
@@ -64,6 +79,52 @@ void UPlayerInteractionComponent::UpdateFocus()
 	{
 		DrawDebugLine(GetWorld(), ViewLocation, TraceEnd, FocusedActor ? FColor::Green : FColor::Red, false, 0.f, 0, 1.f);
 	}
+
+	UpdatePrompt(Cast<APlayerController>(Pawn->GetController()));
+}
+
+
+// --- Prompt UI (local player only) ---
+
+void UPlayerInteractionComponent::UpdatePrompt(APlayerController* PlayerController)
+{
+	if (!PromptWidgetClass || !PlayerController) { return; }
+
+	// Created the first time it is needed, once we know this pawn is controlled by a local player
+	if (!PromptWidget)
+	{
+		PromptWidget = CreateWidget<UInteractionPromptWidget>(PlayerController, PromptWidgetClass);
+		PromptWidget->AddToViewport();
+		PromptWidget->HidePrompt();
+	}
+
+	if (!FocusedActor)
+	{
+		PromptWidget->HidePrompt();
+		return;
+	}
+
+	// The input mapping may not be registered yet on the very first frames: retry until found
+	if (InteractKeyName.IsEmpty())
+	{
+		InteractKeyName = GetInteractKeyName(PlayerController);
+	}
+
+	// Asked every frame: the text can change while aiming (e.g. a door going from "Open" to "Close")
+	PromptWidget->ShowPrompt(InteractKeyName, IInteractable::Execute_GetInteractionText(FocusedActor));
+}
+
+FText UPlayerInteractionComponent::GetInteractKeyName(const APlayerController* PlayerController) const
+{
+	const ULocalPlayer* LocalPlayer = PlayerController->GetLocalPlayer();
+	if (!LocalPlayer || !InteractAction) { return FText::GetEmpty(); }
+
+	UEnhancedInputLocalPlayerSubsystem* InputSubsystem = LocalPlayer->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
+	if (!InputSubsystem) { return FText::GetEmpty(); }
+
+	// Read the key from the Input Mapping Context instead of hardcoding "E"
+	const TArray<FKey> Keys = InputSubsystem->QueryKeysMappedToAction(InteractAction);
+	return Keys.Num() > 0 ? Keys[0].GetDisplayName() : FText::GetEmpty();
 }
 
 

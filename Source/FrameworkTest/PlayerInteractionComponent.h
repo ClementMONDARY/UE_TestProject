@@ -8,11 +8,13 @@
 #include "PlayerInteractionComponent.generated.h"
 
 class UInputAction;
+class APlayerController;
+class UInteractionPromptWidget;
 
 /**
  * Player side of the interaction system:
  * traces from the player's view every frame to find what is aimed at,
- * and asks the server to interact with it when the input is pressed.
+ * shows the "[E] ..." prompt, and asks the server to interact when the input is pressed.
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class FRAMEWORKTEST_API UPlayerInteractionComponent : public UActorComponent, public IPlayerInputBinder
@@ -30,6 +32,8 @@ public:
 	AActor* GetFocusedActor() const { return FocusedActor; }
 
 protected:
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 
 	// --- Settings ---
 
@@ -41,6 +45,10 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Interaction")
 	TEnumAsByte<ECollisionChannel> TraceChannel = ECC_Visibility;
+
+	// Widget Blueprint (child of InteractionPromptWidget) used for the "[E] ..." prompt
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="UI")
+	TSubclassOf<UInteractionPromptWidget> PromptWidgetClass;
 
 	// Draws the trace: green when aiming at an interactable, red otherwise
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Interaction|Debug")
@@ -55,11 +63,20 @@ protected:
 
 private:
 	void UpdateFocus();
+	void UpdatePrompt(APlayerController* PlayerController);
 	void OnInteractPressed();
 
 	bool IsInteractable(AActor* Target) const;
 	bool IsInRange(const AActor* Target) const;
 
+	// Display name of the key bound to InteractAction ("E")
+	FText GetInteractKeyName(const APlayerController* PlayerController) const;
+
 	UPROPERTY()
 	TObjectPtr<AActor> FocusedActor;
+
+	UPROPERTY()
+	TObjectPtr<UInteractionPromptWidget> PromptWidget;
+
+	FText InteractKeyName;
 };
