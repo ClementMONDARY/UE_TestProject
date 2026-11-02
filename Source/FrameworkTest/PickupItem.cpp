@@ -5,7 +5,7 @@
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
-#include "MyCharacter.h"
+#include "GameFramework/Pawn.h"
 #include "MyGameState.h"
 #include "MyPlayerState.h"
 
@@ -14,35 +14,30 @@ APickupItem::APickupItem()
 	Sphere = CreateDefaultSubobject<USphereComponent>(TEXT("Sphere"));
 	RootComponent = Sphere;
 	Sphere->InitSphereRadius(80.f);
-	Sphere->SetCollisionProfileName(TEXT("OverlapOnlyPawn"));
+
+	// The sphere is only used to be hit by the interaction trace
+	Sphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	Sphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	Sphere->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
 	Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Mesh"));
 	Mesh->SetupAttachment(RootComponent);
 	Mesh->SetCollisionProfileName(TEXT("NoCollision"));
 }
 
-void APickupItem::BeginPlay()
+void APickupItem::Interact_Implementation(AActor* InstigatorActor)
 {
-	Super::BeginPlay();
-	Sphere->OnComponentBeginOverlap.AddDynamic(this, &APickupItem::OnSphereBeginOverlap);
-}
-
-void APickupItem::OnSphereBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex,
-	bool bFromSweep, const FHitResult& SweepResult)
-{
-	AMyCharacter* Character = Cast<AMyCharacter>(OtherActor);
-	if (!Character) return; // ce n'est pas notre joueur : on ignore
+	const APawn* Pawn = Cast<APawn>(InstigatorActor);
+	if (!Pawn) { return; }
 
 	if (AMyGameState* GS = GetWorld()->GetGameState<AMyGameState>())
 	{
 		GS->RegisterPickup(Value);
 	}
-	if (AMyPlayerState* PS = Character->GetPlayerState<AMyPlayerState>())
+	if (AMyPlayerState* PS = Pawn->GetPlayerState<AMyPlayerState>())
 	{
 		PS->AddPickup();
 	}
 
 	Destroy();
 }
-
